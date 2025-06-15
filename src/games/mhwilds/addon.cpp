@@ -234,7 +234,7 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "Adds or removes highlight color.",
         .max = 100.f,
         .parse = [](float value) { return value * 0.02f; },
-        .is_visible = []() { return current_settings_mode >= 1 && last_is_hdr; },
+        .is_visible = []() { return current_settings_mode >= 1; },
     },
     new renodx::utils::settings::Setting{
         .key = "ColorGradeBlowout",
@@ -256,7 +256,7 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "Flare/Glare Compensation",
         .max = 100.f,
         .parse = [](float value) { return value * 0.01f; },
-        .is_visible = []() { return current_settings_mode >= 1 && last_is_hdr; },
+        .is_visible = []() { return current_settings_mode >= 1; },
     },
     new renodx::utils::settings::Setting{
         .key = "SwapChainCustomColorSpace",
@@ -332,7 +332,7 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "Controls lut scaling",
         .max = 100.f,
         .parse = [](float value) { return value * 0.01f; },
-        .is_visible = []() { return false; },
+        .is_visible = []() { return current_settings_mode >= 1; },
     },
     new renodx::utils::settings::Setting{
         .key = "FxExposureType",
@@ -344,7 +344,7 @@ renodx::utils::settings::Settings settings = {
         .section = "Effects",
         .tooltip = "Which color to output",
         .labels = {"Vanilla", "Fixed"},
-        .is_visible = []() { return current_settings_mode >= 2 && last_is_hdr; },
+        .is_visible = []() { return current_settings_mode >= 2; },
     },
     new renodx::utils::settings::Setting{
         .key = "FxExposureStrength",
@@ -355,7 +355,7 @@ renodx::utils::settings::Settings settings = {
         .section = "Effects",
         .max = 100.f,
         .parse = [](float value) { return value * 0.02f; },
-        .is_visible = []() { return current_settings_mode >= 2 && last_is_hdr; },
+        .is_visible = []() { return current_settings_mode >= 2; },
     },
     new renodx::utils::settings::Setting{
         .key = "FxLUTExposureReverse",
@@ -367,7 +367,7 @@ renodx::utils::settings::Settings settings = {
         .section = "Effects",
         .tooltip = "Use precolor grade exposure or after",
         .labels = {"Post Grade", "Pre Grade"},
-        .is_visible = []() { return current_settings_mode >= 2 && last_is_hdr; },
+        .is_visible = []() { return current_settings_mode >= 2; },
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
