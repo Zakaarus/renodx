@@ -286,12 +286,8 @@ void OnPresetOff() {
 
 }  // namespace
 
-// NOLINTBEGIN(readability-identifier-naming)
-
-extern "C" __declspec(dllexport) const char* name = "RenoDX";
-extern "C" __declspec(dllexport) const char* description = "RenoDX for Final Fantasy XIV Online";
-
-// NOLINTEND(readability-identifier-naming)
+extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
+extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX for Final Fantasy XIV Online";
 
 struct __declspec(uuid("1228220F-364A-46A2-BB29-1CCE591A018A")) DeviceData {
   reshade::api::effect_runtime* main_runtime = nullptr;
@@ -314,12 +310,12 @@ void OnInitDevice(reshade::api::device* device) {
     std::vector<reshade::api::pipeline_subobject> subobjects;
 
     reshade::api::shader_desc vs_desc = {};
-    vs_desc.code = __final_vertex_shader.begin();
+    vs_desc.code = __final_vertex_shader.data();
     vs_desc.code_size = __final_vertex_shader.size();
     subobjects.push_back({reshade::api::pipeline_subobject_type::vertex_shader, 1, &vs_desc});
 
     reshade::api::shader_desc ps_desc = {};
-    ps_desc.code = __final_pixel_shader.begin();
+    ps_desc.code = __final_pixel_shader.data();
     ps_desc.code_size = __final_pixel_shader.size();
     subobjects.push_back({reshade::api::pipeline_subobject_type::pixel_shader, 1, &ps_desc});
 

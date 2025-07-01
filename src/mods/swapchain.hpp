@@ -5,10 +5,6 @@
 
 #pragma once
 
-#pragma comment(lib, "d3dcompiler.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3d11.lib")
-
 #include <d3d11.h>
 #include <d3d12.h>
 #include <d3d9.h>
@@ -43,6 +39,9 @@
 #include "../utils/swapchain.hpp"
 
 namespace renodx::mods::swapchain {
+
+static decltype(&D3D11CreateDevice) pD3D11CreateDevice = nullptr;
+static decltype(&CreateDXGIFactory1) pCreateDXGIFactory1 = nullptr;
 
 using SwapChainUpgradeTarget = utils::resource::ResourceUpgradeInfo;
 
@@ -89,8 +88,8 @@ struct __declspec(uuid("809df2f6-e1c7-4d93-9c6e-fa88dd960b7c")) DeviceData {
   reshade::api::pipeline swap_chain_proxy_pipeline = {0};
   reshade::api::sampler swap_chain_proxy_sampler = {0};
 
-  std::vector<std::uint8_t> swap_chain_proxy_vertex_shader;
-  std::vector<std::uint8_t> swap_chain_proxy_pixel_shader;
+  std::span<const std::uint8_t> swap_chain_proxy_vertex_shader;
+  std::span<const std::uint8_t> swap_chain_proxy_pixel_shader;
   int32_t expected_constant_buffer_index = -1;
   uint32_t expected_constant_buffer_space = 0;
   bool swapchain_proxy_revert_state = false;
@@ -150,15 +149,15 @@ static bool bypass_dummy_windows = true;
 static bool use_auto_upgrade = false;
 static std::unordered_set<std::string> ignored_window_class_names = {};
 static reshade::api::format swap_chain_proxy_format = reshade::api::format::r16g16b16a16_float;
-static std::vector<std::uint8_t> swap_chain_proxy_vertex_shader = {};
-static std::vector<std::uint8_t> swap_chain_proxy_pixel_shader = {};
+static std::span<const std::uint8_t> swap_chain_proxy_vertex_shader = {};
+static std::span<const std::uint8_t> swap_chain_proxy_pixel_shader = {};
 static int32_t expected_constant_buffer_index = -1;
 static uint32_t expected_constant_buffer_space = 0;
 static float* shader_injection = nullptr;
 static size_t shader_injection_size = 0;
 struct SwapChainProxyShaders {
-  std::vector<std::uint8_t> vertex_shader;
-  std::vector<std::uint8_t> pixel_shader;
+  std::span<const std::uint8_t> vertex_shader;
+  std::span<const std::uint8_t> pixel_shader;
 };
 static std::unordered_map<reshade::api::device_api, SwapChainProxyShaders> swap_chain_proxy_shaders = {};
 static SwapChainUpgradeTarget auto_upgrade_target = {
@@ -752,16 +751,51 @@ inline void FlushDescriptors(reshade::api::command_list* cmd_list) {
   cmd_data->unpushed_updates.clear();
 }
 
+bool LoadDirectXLibraries() {
+  if (!pD3D11CreateDevice) {
+    HMODULE d3d11Module = GetModuleHandleW(L"d3d11.dll");
+    if (!d3d11Module) {
+      d3d11Module = LoadLibraryW(L"d3d11.dll");
+    }
+    if (d3d11Module) {
+      pD3D11CreateDevice = reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(d3d11Module, "D3D11CreateDevice"));
+    }
+  }
+
+  if (!pD3D11CreateDevice) {
+    return false;
+  }
+  // Dynamically load CreateDXGIFactory1 from dxgi.dll
+
+  if (!pCreateDXGIFactory1) {
+    HMODULE dxgiModule = GetModuleHandleW(L"dxgi.dll");
+    if (!dxgiModule) {
+      dxgiModule = LoadLibraryW(L"dxgi.dll");
+    }
+    if (dxgiModule) {
+      pCreateDXGIFactory1 = reinterpret_cast<decltype(&CreateDXGIFactory1)>(
+          GetProcAddress(dxgiModule, "CreateDXGIFactory1"));
+    }
+  }
+
+  if (!pCreateDXGIFactory1) {
+    return false;
+  }
+  return true;
+}
+
 inline ID3D11Device* GetDeviceProxy(reshade::api::swapchain* swapchain, reshade::api::command_queue* queue) {
   auto* hwnd = swapchain->get_hwnd();
   if (proxy_device != nullptr) {
     return proxy_device;
   }
 
+  if (!LoadDirectXLibraries()) return nullptr;
+
   // Create a new D3D11 device and HDR10 swapchain
   IDXGIFactory2* dxgi_factory = nullptr;
 
-  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory)))) {
+  if (FAILED(pCreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory)))) {
     return nullptr;
   }
 
@@ -777,7 +811,7 @@ inline ID3D11Device* GetDeviceProxy(reshade::api::swapchain* swapchain, reshade:
   fullscreen_desc.RefreshRate.Numerator = 0;
   fullscreen_desc.RefreshRate.Denominator = 0;
   sc_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  auto* output_window = hwnd ? static_cast<HWND>(hwnd) : GetDesktopWindow();
+  auto* output_window = hwnd != nullptr ? static_cast<HWND>(hwnd) : GetDesktopWindow();
   sc_desc.SampleDesc.Count = 1;
   fullscreen_desc.Windowed = TRUE;
   sc_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -793,8 +827,9 @@ inline ID3D11Device* GetDeviceProxy(reshade::api::swapchain* swapchain, reshade:
   D3D_FEATURE_LEVEL feature_level;
 
   assert(is_creating_proxy_device == false);
+  assert(proxy_device_reshade == nullptr);
   is_creating_proxy_device = true;
-  if (FAILED(D3D11CreateDevice(
+  if (FAILED(pD3D11CreateDevice(
           nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, create_flags,
           nullptr, 0, D3D11_SDK_VERSION, &proxy_device, &feature_level, &proxy_device_context))) {
     is_creating_proxy_device = false;
@@ -806,6 +841,7 @@ inline ID3D11Device* GetDeviceProxy(reshade::api::swapchain* swapchain, reshade:
     return nullptr;
   }
   is_creating_proxy_device = false;
+  assert(proxy_device_reshade != nullptr);
 
   // Create swapchain for HWND
   if (FAILED(dxgi_factory->CreateSwapChainForHwnd(
@@ -1120,7 +1156,8 @@ static bool OnCreateDevice(reshade::api::device_api api, uint32_t& api_version) 
 static void OnInitDevice(reshade::api::device* device) {
   std::stringstream s;
   s << "mods::swapchain::OnInitDevice(";
-  s << reinterpret_cast<uintptr_t>(device);
+  s << PRINT_PTR((uintptr_t)(device));
+  s << ", native: " << PRINT_PTR((uintptr_t)(device->get_native()));
   s << ")";
   reshade::log::message(reshade::log::level::info, s.str().c_str());
   auto* data = renodx::utils::data::Create<DeviceData>(device);

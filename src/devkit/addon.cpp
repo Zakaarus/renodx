@@ -102,7 +102,7 @@ struct ShaderDetails {
   std::variant<std::nullopt_t, std::exception, std::string> disassembly = std::nullopt;
   std::variant<std::nullopt_t, std::exception, std::string> decompilation = std::nullopt;
   std::optional<renodx::utils::shader::compiler::directx::DxilProgramVersion> program_version = std::nullopt;
-  std::vector<uint8_t> addon_shader;
+  std::span<const uint8_t> addon_shader;
   std::optional<renodx::utils::shader::compiler::watcher::CustomShader> disk_shader = std::nullopt;
   reshade::api::pipeline_stage shader_type = static_cast<reshade::api::pipeline_stage>(0);
   std::optional<std::vector<ResourceBind>> resource_binds = std::nullopt;
@@ -1028,16 +1028,63 @@ void OnPushDescriptors(
         }
         auto layout_params = pair->second;
         auto param = layout_params[layout_param];
-        assert(param.type == reshade::api::pipeline_layout_param_type::push_descriptors);
-        assert(param.push_descriptors.type == reshade::api::descriptor_type::constant_buffer);
+        if (param.type == reshade::api::pipeline_layout_param_type::push_descriptors) {
+          assert(param.push_descriptors.type == reshade::api::descriptor_type::constant_buffer);
 
-        uint32_t dx_register_index = param.push_constants.dx_register_index;
-        uint32_t dx_register_space = param.push_constants.dx_register_space;
-        auto buffer_range = static_cast<const reshade::api::buffer_range*>(update.descriptors)[i];
+          uint32_t pair_a = 0;
+          uint32_t pair_b = 0;
+          switch (device->get_api()) {
+            case reshade::api::device_api::d3d9:
+            case reshade::api::device_api::d3d10:
+            case reshade::api::device_api::d3d11:
+            case reshade::api::device_api::d3d12:
+              pair_a = param.push_constants.dx_register_index;
+              pair_b = param.push_constants.dx_register_space;
+              break;
 
-        auto slot = std::pair<uint32_t, uint32_t>(dx_register_index + update.binding + i, dx_register_space);
+            case reshade::api::device_api::opengl:
+              break;
 
-        data->constants[slot] = buffer_range;
+            case reshade::api::device_api::vulkan:
+              pair_a = update.binding;
+              pair_b = update.array_offset + i;
+              break;
+            default:
+              assert(false);
+          }
+          auto buffer_range = static_cast<const reshade::api::buffer_range*>(update.descriptors)[i];
+          auto slot = std::pair<uint32_t, uint32_t>(pair_a, pair_b);
+          data->constants[slot] = buffer_range;
+        } else if (param.type == reshade::api::pipeline_layout_param_type::push_descriptors_with_ranges) {
+          uint32_t pair_a = 0;
+          uint32_t pair_b = 0;
+
+          switch (device->get_api()) {
+            case reshade::api::device_api::d3d9:
+            case reshade::api::device_api::d3d10:
+            case reshade::api::device_api::d3d11:
+            case reshade::api::device_api::d3d12:
+              assert(false);
+              break;
+            case reshade::api::device_api::opengl:
+              break;
+
+            case reshade::api::device_api::vulkan:
+              assert(param.descriptor_table.count > update.binding);
+              assert(param.descriptor_table.ranges[update.binding].binding == update.binding);
+              pair_a = update.binding;
+              pair_b = update.array_offset + i;
+              break;
+            default:
+              assert(false);
+          }
+          auto buffer_range = static_cast<const reshade::api::buffer_range*>(update.descriptors)[i];
+          auto slot = std::pair<uint32_t, uint32_t>(pair_a, pair_b);
+          data->constants[slot] = buffer_range;
+
+        } else {
+          assert(false);
+        }
 
       } break;
       default:
@@ -1138,19 +1185,18 @@ bool OnDraw(reshade::api::command_list* cmd_list, DrawDetails::DrawMethods draw_
         if (descriptor_data == nullptr) return false;
         for (auto param_index = 0; param_index < param_count; ++param_index) {
           const auto& param = info.params.at(param_index);
-
           const auto& table = info.tables[param_index];
-
-          if (table.handle == 0u) continue;
 
           uint32_t descriptor_table_count;
           const reshade::api::descriptor_range* descriptor_table_ranges;
           switch (param.type) {
             case reshade::api::pipeline_layout_param_type::descriptor_table:
+              if (table.handle == 0u) continue;
               descriptor_table_count = param.descriptor_table.count;
               descriptor_table_ranges = param.descriptor_table.ranges;
               break;
             case reshade::api::pipeline_layout_param_type::descriptor_table_with_static_samplers:
+              if (table.handle == 0u) continue;
               descriptor_table_count = param.descriptor_table_with_static_samplers.count;
               descriptor_table_ranges = param.descriptor_table_with_static_samplers.ranges;
               break;
@@ -1369,7 +1415,7 @@ void DeactivateShader(reshade::api::device* device, uint32_t shader_hash) {
   renodx::utils::shader::RemoveRuntimeReplacements(device, {shader_hash});
 }
 
-void ActivateShader(reshade::api::device* device, uint32_t shader_hash, std::vector<uint8_t>& shader_data) {
+void ActivateShader(reshade::api::device* device, uint32_t shader_hash, std::span<const uint8_t> shader_data) {
   renodx::utils::shader::AddRuntimeReplacement(device, shader_hash, shader_data);
 }
 
@@ -1379,8 +1425,8 @@ void LoadDiskShaders(reshade::api::device* device, DeviceData* data, bool activa
   } else {
     renodx::utils::shader::compiler::watcher::CompileSync();
   }
-  auto new_shaders = renodx::utils::shader::compiler::watcher::FlushCompiledShaders();
-  for (auto& [shader_hash, custom_shader] : new_shaders) {
+  const auto& custom_shaders = renodx::utils::shader::compiler::watcher::FlushCompiledShaders();
+  for (const auto& [shader_hash, custom_shader] : custom_shaders) {
     reshade::log::message(reshade::log::level::debug, "new shaders");
     auto* details = data->GetShaderDetails(shader_hash);
     details->disk_shader = custom_shader;
@@ -1390,7 +1436,7 @@ void LoadDiskShaders(reshade::api::device* device, DeviceData* data, bool activa
       DeactivateShader(device, shader_hash);
 
       if (!custom_shader.removed && custom_shader.IsCompilationOK()) {
-        auto shader_data = custom_shader.GetCompilationData();
+        const auto& shader_data = details->disk_shader->GetCompilationData();
         ActivateShader(device, shader_hash, shader_data);
       }
     }
@@ -2548,7 +2594,7 @@ void RenderShadersPane(reshade::api::device* device, DeviceData* data) {
                 if (i == 1) {
                   ActivateShader(device, shader_details->shader_hash, shader_details->addon_shader);
                 } else if (i == 2) {
-                  auto shader_data = shader_details->disk_shader->GetCompilationData();
+                  const auto& shader_data = shader_details->disk_shader->GetCompilationData();
                   ActivateShader(device, shader_details->shader_hash, shader_data);
                 }
               }
@@ -3488,9 +3534,7 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
 
-      // while (IsDebuggerPresent() == 0) {
-      //   Sleep(100);
-      // }
+      // while (IsDebuggerPresent() == 0) Sleep(100);
 
       if (!initialized) {
         renodx::utils::shader::use_replace_async = true;

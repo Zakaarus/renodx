@@ -254,7 +254,18 @@ renodx::utils::settings::Settings settings = {
         .is_enabled = []() { return shader_injection.tone_map_type == 3; },
         .parse = [](float value) { return value * 0.02f; },
         .is_visible = []() { return current_settings_mode >= 1; },
-
+    },
+    new renodx::utils::settings::Setting{
+        .key = "ColorGradeClip",
+        .binding = &shader_injection.reno_drt_white_clip,
+        .default_value = 65.f,
+        .label = "White Clip",
+        .section = "Custom Color Grading",
+        .tooltip = "Clip point for white in nits",
+        .min = 1.f,
+        .max = 100.f,
+        .is_enabled = []() { return shader_injection.tone_map_type == 3; },
+        .is_visible = []() { return current_settings_mode >= 1; },
     },
     new renodx::utils::settings::Setting{
         .key = "ColorGradeColorSpace",
@@ -509,12 +520,32 @@ const std::unordered_map<
                 {"Upgrade_R10G10B10A2_UNORM", UPGRADE_TYPE_OUTPUT_SIZE},
             },
         },
-
         {
             "Stellar Blade (Demo)",
             {
                 {"Upgrade_CopyDestinations", 1.f},
                 {"Upgrade_B8G8R8A8_TYPELESS", UPGRADE_TYPE_OUTPUT_SIZE},
+                {"Upgrade_R10G10B10A2_UNORM", UPGRADE_TYPE_OUTPUT_SIZE},
+            },
+        },
+        {
+            "Lies of P",
+            {
+                {"Upgrade_B8G8R8A8_TYPELESS", UPGRADE_TYPE_OUTPUT_SIZE},
+                {"Upgrade_R10G10B10A2_UNORM", UPGRADE_TYPE_OUTPUT_SIZE},
+            },
+        },
+        {
+            "Like a Dragon: Ishin!",
+            {
+                {"Upgrade_B8G8R8A8_TYPELESS", UPGRADE_TYPE_OUTPUT_SIZE},
+                {"Upgrade_R10G10B10A2_UNORM", UPGRADE_TYPE_OUTPUT_SIZE},
+            },
+        },
+
+        {
+            "Pal",
+            {
                 {"Upgrade_R10G10B10A2_UNORM", UPGRADE_TYPE_OUTPUT_SIZE},
             },
         },
