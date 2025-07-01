@@ -1,3 +1,5 @@
+personal fork for mhwilds renodx. idk how github works pls tell me if something weird happens i will literally delete if needed
+
 [![Clang](https://github.com/clshortfuse/renodx/actions/workflows/clang.yml/badge.svg)](https://github.com/clshortfuse/renodx/actions/workflows/clang.yml) [![Ninja](https://github.com/clshortfuse/renodx/actions/workflows/ninja.yml/badge.svg)](https://github.com/clshortfuse/renodx/actions/workflows/ninja.yml) [![Visual Studio](https://github.com/clshortfuse/renodx/actions/workflows/visual-studio.yml/badge.svg)](https://github.com/clshortfuse/renodx/actions/workflows/visual-studio.yml) [![Discord](https://img.shields.io/discord/1161035767917850784?logo=discord&logoColor=%23fff&label=Discord&labelColor=%235865F2)](https://discord.gg/5WZXDpmbpP)
 
 
